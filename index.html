@@ -160,10 +160,11 @@ const LEVELS = [
   { name: 'BAP OCALYPSE', tag: 'Every boss. No mercy.', bg: bgApocalypse, rush: true },
 ];
 
-let state = 'title', keys = {}, t = 0, level = 0;
+let state = 'title', keys = {}, t = 0, level = 0, practice = false;
 let player, bullets, enemies, drops, ostias, particles, boss, wave, kills, score, lives, weaponLvl, lastShot, faceSwapUntil, msg, msgUntil = 0;
 
-function newGame() { level = 0; lives = 5; score = 0; kills = 0; weaponLvl = 0; }
+function newGame() { level = 0; lives = 5; score = 0; kills = 0; weaponLvl = 0; practice = false; }
+const addScore = n => { if (state === 'play' && !practice) score += n; };
 function startLevel() {
   player = { x: W / 2, y: H - 110, r: 42, inv: 0 };
   bullets = []; enemies = []; drops = []; ostias = []; particles = [];
@@ -273,7 +274,7 @@ function hitPlayer() {
 }
 
 function killEnemy(e) {
-  kills++; score += 100; boom(e.x, e.y, e.type ? e.type.robe : '#fc3');
+  kills++; addScore(100); boom(e.x, e.y, e.type ? e.type.robe : '#fc3');
   if (kills % 10 === 0) { faceSwapUntil = performance.now() + 5000; banner('BAP MODE', 1200); }
   dropFrom(e.x, e.y);
 }
@@ -297,7 +298,7 @@ function bossAttack(b, now) {
 
 function bossDefeated() {
   const L = LEVELS[level];
-  boom(boss.x, boss.y, '#fff', 80); score += 5000; drops.push({ x: boss.x, y: boss.y, vy: 2, kind: 'up' });
+  boom(boss.x, boss.y, '#fff', 80); addScore(5000); drops.push({ x: boss.x, y: boss.y, vy: 2, kind: 'up' });
   if (L.rush && boss.li < LEVELS.length - 2) { spawnBoss(boss.li + 1); return; }
   boss = null; ostias = [];
   if (L.rush) state = 'win'; else { state = 'clear'; lives = Math.min(lives + 1, 9); }
@@ -352,7 +353,7 @@ const line = (s, x, y) => { ctx.strokeText(s, x, y); ctx.fillText(s, x, y); };
 function drawHUD(now) {
   ctx.textAlign = 'left'; ctx.font = '22px Impact'; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 4;
   line('LVL ' + (level + 1) + ' · ' + LEVELS[level].name, 14, 64);
-  line('SCORE ' + score, 14, H - 16); line('LIVES ' + '♥'.repeat(Math.max(0, lives)), 200, H - 16);
+  line('SCORE ' + score + (practice ? ' (practice)' : ''), 14, H - 16); line('LIVES ' + '♥'.repeat(Math.max(0, lives)), 200, H - 16);
   line('WEAPON: ' + WEAPONS[weaponLvl].name, 400, H - 16); line('KILLS ' + kills, 670, H - 16);
   if (now < msgUntil) { ctx.textAlign = 'center'; ctx.font = '54px Impact'; ctx.lineWidth = 6; line(msg, W / 2, H / 2 - 40); }
 }
@@ -388,6 +389,25 @@ function drawOverlay(title, sub) {
   ctx.font = '28px Impact'; ctx.fillText(sub, W / 2, H / 2 + 40);
 }
 
+const OVER_BTNS = { again: { x: W / 2 - 300, y: 560, w: 280, h: 70 }, cont: { x: W / 2 + 20, y: 560, w: 280, h: 70 } };
+function drawGameOver() {
+  rect('rgba(0,0,0,.7)', 0, 0, W, H); ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+  ctx.font = '80px Impact'; ctx.fillText(level === 0 ? 'EXCOMMUNICATED' : 'GAME OVER', W / 2, 330);
+  ctx.fillStyle = '#ffe36b'; ctx.font = '44px Impact'; ctx.fillText('SCORE: ' + score, W / 2, 410);
+  ctx.fillStyle = '#ccc'; ctx.font = '22px Impact'; ctx.fillText('Reached level ' + (level + 1) + ' · ' + LEVELS[level].name + ' · ' + kills + ' kills' + (practice ? ' (practice)' : ''), W / 2, 455);
+  for (const [k, label, col] of [['again', 'PLAY AGAIN', '#1f5fbf'], ['cont', 'CONTINUE', '#555']]) {
+    const b = OVER_BTNS[k]; rect(col, b.x, b.y, b.w, b.h); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.strokeRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = '#fff'; ctx.font = '36px Impact'; ctx.fillText(label, b.x + b.w / 2, b.y + 48);
+  }
+  ctx.font = '18px Impact'; ctx.fillStyle = '#ddd';
+  ctx.fillText('[ENTER] restart from level 1', OVER_BTNS.again.x + 140, 660);
+  ctx.fillText('[C] retry ' + LEVELS[level].name, OVER_BTNS.cont.x + 140, 660);
+  ctx.font = 'italic 16px Georgia'; ctx.fillStyle = '#aaa';
+  ctx.fillText("(won't count for your score,", OVER_BTNS.cont.x + 140, 688);
+  ctx.fillText('it’s just for fun to see the levels)', OVER_BTNS.cont.x + 140, 708);
+}
+function continueGame() { practice = true; lives = 5; state = 'intro'; }
+
 function frame(now) {
   t = now;
   if (state === 'title') drawTitle(now);
@@ -402,8 +422,8 @@ function frame(now) {
     if (player.inv % 10 < 6) drawFace(player.x, player.y, player.r);
     drawHUD(now);
     if (state === 'clear') drawOverlay(LEVELS[level].name + ' COMPLETE', '+1 life  ·  ENTER for next level');
-    if (state === 'over') drawOverlay(level === 0 ? 'EXCOMMUNICATED' : 'GAME OVER', 'ENTER to retry ' + LEVELS[level].name);
-    if (state === 'win') drawOverlay('YOU SURVIVED THE BAPOCALYPSE', 'Score ' + score + '  ·  ENTER for title');
+    if (state === 'over') drawGameOver();
+    if (state === 'win') drawOverlay('YOU SURVIVED THE BAPOCALYPSE', (practice ? 'Practice run · official score ' : 'Final score ') + score + '  ·  ENTER for title');
   }
   drawEmo(muted ? '🔇' : '🔊', MUTE.x + MUTE.s / 2, MUTE.y + MUTE.s / 2, 30);
   requestAnimationFrame(frame);
@@ -455,7 +475,7 @@ function advance() {
   if (state === 'title') { newGame(); state = 'intro'; }
   else if (state === 'intro') { startLevel(); state = 'play'; }
   else if (state === 'clear') { level++; state = 'intro'; }
-  else if (state === 'over') { lives = 5; state = 'intro'; }
+  else if (state === 'over') { newGame(); state = 'intro'; }
   else if (state === 'win') state = 'title';
 }
 addEventListener('keydown', e => {
@@ -464,13 +484,16 @@ addEventListener('keydown', e => {
   if (e.key === 'm' || e.key === 'M') toggleMute();
   if (e.key === ' ' || e.key.startsWith('Arrow')) e.preventDefault();
   if (e.key === 'Enter') advance();
-  if (state === 'intro' && /^[0-9]$/.test(e.key)) level = (+e.key + 9) % 10; // level select: 1-9, 0 = level 10
+  if (state === 'over' && (e.key === 'c' || e.key === 'C')) continueGame();
+  if (state === 'intro' && /^[0-9]$/.test(e.key)) { level = (+e.key + 9) % 10; if (level > 0) practice = true; } // level select: 1-9, 0 = level 10
 });
 addEventListener('keyup', e => { keys[e.key.length === 1 ? e.key.toLowerCase() : e.key] = false; });
 cv.addEventListener('click', e => {
   startMusic();
   const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
   if (x > MUTE.x && y < MUTE.y + MUTE.s) return toggleMute();
+  const inBtn = b => x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h;
+  if (state === 'over') { if (inBtn(OVER_BTNS.again)) advance(); else if (inBtn(OVER_BTNS.cont)) continueGame(); return; }
   if (state !== 'title') return;
   if (x > BTN.x && x < BTN.x + BTN.w && y > BTN.y && y < BTN.y + BTN.h) advance();
 });
